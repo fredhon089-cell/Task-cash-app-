@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskCash</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: auto;
+      padding: 20px;
+      background: #f4f6f8;
+      color: #172033;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      margin: 15px 0;
+      border-radius: 15px;
+      box-shadow: 0 2px 10px #0001;
+    }
+
+    input, button {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 13px;
+      margin: 6px 0;
+      border-radius: 9px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background: #172033;
+      color: white;
+      border: none;
+      font-weight: bold;
+    }
+
+    .balance {
+      font-size: 32px;
+      font-weight: bold;
+    }
+
+    .task {
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 10px;
+    }
+
+    .error {
+      color: #b00020;
+    }
+
+    .success {
+      color: green;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>TaskCash</h1>
+  <p>Complete verified tasks and earn rewards.</p>
+
+  <div class="card">
+    <h2>My Account</h2>
+
+    <input id="name" placeholder="Your name">
+    <input id="email" type="email" placeholder="Your email">
+
+    <button onclick="createAccount()">
+      Create / Load Account
+    </button>
+
+    <div id="accountMessage"></div>
+  </div>
+
+  <div class="card">
+    <h2>My Balance</h2>
+    <div id="balance" class="balance">₦0.00</div>
+  </div>
+
+  <div class="card">
+    <h2>Available Tasks</h2>
+    <div id="tasks">Loading tasks...</div>
+  </div>
+
+  <script>
+    let userId = localStorage.getItem("taskcash_user");
+
+    function formatMoney(kobo) {
+      return new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN"
+      }).format(Number(kobo) / 100);
+    }
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, options);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Something went wrong");
+      }
+
+      return data;
+    }
+
+    async function createAccount() {
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+
+      try {
+        const user = await api("/api/users", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            name: name,
+            email: email
+          })
+        });
+
+        userId = user.id;
+        localStorage.setItem("taskcash_user", user.id);
+
+        document.getElementById("accountMessage").innerHTML =
+          '<p class="success">Account is ready.</p>';
+
+        loadAccount();
+
+      } catch (error) {
+        document.getElementById("accountMessage").innerHTML =
+          '<p class="error">' + error.message + '</p>';
+      }
+    }
+
+    async function loadAccount() {
+      if (!userId) return;
+
+      try {
+        const user = await api("/api/users/" + userId);
+
+        document.getElementById("balance").textContent =
+          formatMoney(user.balance_kobo);
+
+        const tasks = await api("/api/tasks");
+
+        if (tasks.length === 0) {
+          document.getElementById("tasks").innerHTML =
+            "<p>No tasks available right now.</p>";
+          return;
+        }
+
+        document.getElementById("tasks").innerHTML =
+          tasks.map(function(task) {
+            return `
+              <div class="task">
+                <h3>${task.title}</h3>
+                <p>${task.description}</p>
+                <strong>${formatMoney(task.reward_kobo)}</strong>
+                <button onclick="submitTask(${task.id})">
+                  Submit Task
+                </button>
+              </div>
+            `;
+          }).join("");
+
+      } catch (error) {
+        document.getElementById("accountMessage").innerHTML =
+          '<p class="error">' + error.message + '</p>';
+      }
+    }
+
+    async function submitTask(taskId) {
+      try {
+        await api("/api/tasks/" + taskId + "/claim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            userId: Number(userId)
+          })
+        });
+
+        alert("Task submitted for verification.");
+
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    loadAccount();
+  </script>
+
+</body>
+    </html>
